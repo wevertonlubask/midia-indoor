@@ -1,0 +1,81 @@
+# Environment (credenciais)
+.env
+.env.local
+.env.*.local
+.env.prod
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+venv/
+env/
+.venv/
+*.pyc
+
+# Node
+node_modules/
+.next/
+out/
+.npm/
+*.tsbuildinfo
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE / Tools
+.vscode/
+.idea/
+.claude/
+*.swp
+*.swo
+
+# Docker volumes (local data)
+postgres_data/
+redis_data/
+minio_data/
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Alembic (keep structure, not generated)
+alembic/versions/*.py
+!alembic/versions/.gitkeep
+
+# Deploy scripts (contém credenciais hardcoded)
+deploy_*.py
+fix_nginx_logos.py
+
+# Docs com credenciais/IPs internos
+DEPLOY.md
+CORRIGIR_VIDEO_SERVIDOR.md
+signflow-refatoracao-prompt.md
+
+# Arquivos de midia / zip
+banner Exemplos/
+logo_branco.png
+logo_midia_indoor.png
+signflow-update.zip
+
+# Raspberry Pi setup (contém IPs internos)
+raspi-setup/
+
+# Docker compose de producao (contém config sensivel)
+docker-compose.prod.yml
+
+# Scripts e nginx de producao (contém IPs internos)
+scripts/
+nginx/
