@@ -7,7 +7,7 @@ import os
 class Settings(BaseSettings):
     # Aplicação
     APP_NAME: str = "SignFlow"
-    VERSION: str = "2.3.1"
+    VERSION: str = "2.3.2"
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "info"

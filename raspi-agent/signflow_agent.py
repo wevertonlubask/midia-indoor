@@ -40,7 +40,7 @@ except ImportError:  # websockets < 13
     from websockets import connect as ws_connect
 from websockets.exceptions import ConnectionClosed, InvalidStatus
 
-AGENT_VERSION = "1.5.1"
+AGENT_VERSION = "1.5.2"
 
 CONFIG_FILE = "/etc/signflow-agent/agent.conf"
 STATE_DIR = "/var/lib/signflow-agent"
@@ -851,6 +851,24 @@ class Agent:
                 ok &= run(["wlr-randr", "--output", o, "--off"], user=self.kiosk_user).returncode == 0
         return ok, "Sinal HDMI " + ("ligado" if on else "desligado") if ok else "Falha ao alterar saída HDMI"
 
+    def enforce_resolution(self):
+        """Mantém 1080p: a TV renegocia o HDMI ao acordar (CEC, troca de entrada,
+        controle remoto) e o compositor volta ao modo preferido dela (ex.: 4K 30 Hz)."""
+        out = run(["wlr-randr"], user=self.kiosk_user).stdout.decode(errors="replace")
+        output, enabled = None, False
+        for line in out.splitlines():
+            if line and not line[0].isspace():
+                output, enabled = line.split()[0], False
+            elif "Enabled:" in line:
+                enabled = "yes" in line
+            elif "current" in line and output and enabled:
+                width = int(line.split("x")[0].strip() or 0)
+                if width > 1920:
+                    for mode in ("1920x1080@60Hz", "1920x1080"):
+                        if run(["wlr-randr", "--output", output, "--mode", mode], user=self.kiosk_user).returncode == 0:
+                            log.info("Resolução de %s restaurada para %s (estava %s)", output, mode, line.split("px")[0].strip())
+                            break
+
     def cec_power_status(self):
         """Estado de energia informado pela TV via CEC (on/standby/...) ou None."""
         found = self.find_cec_device()
@@ -1023,6 +1041,7 @@ class Agent:
     async def scheduler_loop(self):
         while True:
             try:
+                await asyncio.to_thread(self.enforce_resolution)
                 now = datetime.now()
                 wants_on = self.schedule_wants_on(now)
                 # Só age nas transições: um comando manual vale até a próxima
