@@ -7,8 +7,7 @@ export const ClockWidget = memo(function ClockWidget() {
 
   useEffect(() => {
     setNow(new Date());
-    const timer = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(timer);
+    return everyMinute(() => setNow(new Date()));
   }, []);
 
   const time = now?.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) ?? "";
@@ -42,3 +41,19 @@ export const ClockWidget = memo(function ClockWidget() {
     </div>
   );
 });
+
+/**
+ * Chama `fn` na virada de cada minuto. O relógio mostra só HH:MM, então
+ * atualizar a cada segundo gerava 59 re-renders/repaints inúteis por minuto no Pi.
+ */
+export function everyMinute(fn: () => void): () => void {
+  let interval: ReturnType<typeof setInterval> | undefined;
+  const timeout = setTimeout(() => {
+    fn();
+    interval = setInterval(fn, 60_000);
+  }, 60_000 - (Date.now() % 60_000) + 50);
+  return () => {
+    clearTimeout(timeout);
+    if (interval) clearInterval(interval);
+  };
+}

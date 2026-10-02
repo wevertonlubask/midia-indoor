@@ -7,6 +7,8 @@ from sqlalchemy import select
 from app.core.database import get_db
 from app.core.security import get_current_user, get_current_admin
 from app.models.screen import Screen
+from app.models.device import Device
+from app.api.v1.devices import push_config
 from app.models.user import User
 from app.schemas.screen import ScreenCreate, ScreenUpdate, ScreenResponse
 from app.services.websocket_manager import ws_manager
@@ -87,6 +89,7 @@ async def update_screen(
 
     await db.flush()
     await db.refresh(screen)
+    await ws_manager.broadcast_devices({"event": "SYNC_MEDIA"})
     return _enrich_screen(screen)
 
 
@@ -100,7 +103,16 @@ async def delete_screen(
     screen = result.scalar_one_or_none()
     if not screen:
         raise HTTPException(status_code=404, detail="Tela não encontrada")
+
+    # Desvincula os dispositivos e avisa os agentes (voltam para a tela de pareamento)
+    linked = await db.execute(select(Device).where(Device.screen_id == screen_id))
+    devices = linked.scalars().all()
+    for device in devices:
+        device.screen_id = None
     await db.delete(screen)
+    await db.flush()
+    for device in devices:
+        await push_config(device)
 
 
 @router.post("/{screen_id}/reload", status_code=status.HTTP_204_NO_CONTENT)

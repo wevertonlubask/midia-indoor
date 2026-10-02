@@ -1,5 +1,6 @@
 from app.models.user import User, UserRole
 from app.models.screen import Screen
+from app.models.device import Device
 from app.models.banner import Banner
 from app.models.video import Video, TranscodeStatus
 from app.models.playlist import Playlist, PlaylistBanner, PlaylistVideo
@@ -12,6 +13,7 @@ from app.models.site_settings import SiteSettings
 __all__ = [
     "User", "UserRole",
     "Screen",
+    "Device",
     "Banner",
     "Video", "TranscodeStatus",
     "Playlist", "PlaylistBanner", "PlaylistVideo",

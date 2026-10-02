@@ -9,6 +9,7 @@ from app.models.playlist import Playlist, PlaylistBanner, PlaylistVideo
 from app.models.user import User
 from app.schemas.playlist import PlaylistCreate, PlaylistUpdate, PlaylistResponse
 from app.services.audit import log_action
+from app.services.websocket_manager import ws_manager
 
 router = APIRouter(prefix="/playlists", tags=["playlists"])
 
@@ -165,6 +166,8 @@ async def update_playlist(
     await log_action(db, current_user, "update_playlist", "playlist", playlist_id, playlist.name)
     await db.flush()
     await db.refresh(playlist)
+    # Raspberry Pis baixam as mídias novas para o cache local
+    await ws_manager.broadcast_devices({"event": "SYNC_MEDIA"})
     return playlist
 
 

@@ -1,13 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   Plus, Trash2, Wifi, WifiOff, RefreshCw, Monitor,
-  Loader2, X, Copy, ExternalLink, ListVideo, Check,
+  Loader2, X, Copy, ExternalLink, ListVideo, Check, Cpu,
 } from "lucide-react";
-import { screensApi, playlistsApi, type Screen } from "@/lib/api";
+import { screensApi, playlistsApi, devicesApi, type Screen } from "@/lib/api";
+import { ScreenDevices } from "@/components/devices/ScreenDevices";
 import { formatRelativeTime } from "@/lib/utils";
 import { Select } from "@/components/ui/select";
 
@@ -31,6 +33,13 @@ export default function ScreensPage() {
     queryKey: ["playlists"],
     queryFn: () => playlistsApi.list().then((r) => r.data),
   });
+
+  const { data: devices } = useQuery({
+    queryKey: ["devices"],
+    queryFn: () => devicesApi.list().then((r) => r.data),
+    refetchInterval: 10_000,
+  });
+  const pendingDevices = devices?.filter((d) => !d.screen_id) ?? [];
 
   const createMutation = useMutation({
     mutationFn: () => screensApi.create({ name, location: location || undefined, is_active: true }),
@@ -100,6 +109,21 @@ export default function ScreensPage() {
           Nova Tela
         </button>
       </div>
+
+      {pendingDevices.length > 0 && (
+        <Link
+          href="/admin/devices"
+          className="flex items-center gap-3 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 mb-6 text-sm text-amber-600 hover:bg-amber-500/15 transition"
+        >
+          <Cpu className="w-4 h-4 flex-shrink-0" />
+          <span className="flex-1">
+            {pendingDevices.length === 1
+              ? `1 dispositivo novo aguardando vínculo (${pendingDevices[0].name}).`
+              : `${pendingDevices.length} dispositivos novos aguardando vínculo.`}{" "}
+            Envie o link de uma tela abaixo ou gerencie em Dispositivos.
+          </span>
+        </Link>
+      )}
 
       {showForm && (
         <div className="bg-card rounded-xl shadow-md shadow-black/10 border border-border p-6 mb-6">
@@ -267,6 +291,8 @@ export default function ScreensPage() {
                   </button>
                 )}
               </div>
+
+              <ScreenDevices screen={screen} devices={devices ?? []} />
 
               {screen.last_seen_at && (
                 <p className="text-xs text-muted-foreground/70 mb-3">

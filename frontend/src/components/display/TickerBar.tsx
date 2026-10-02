@@ -17,7 +17,9 @@ interface TickerBarProps {
 }
 
 const SEPARATOR = "    \u2022    ";
-const SPEED_PX_S = 55;
+// 60 px/s = exatamente 1 px por frame a 60 Hz. Velocidades fracionárias por frame
+// fazem o texto alternar passos de 0 e 1 px, o que aparece como movimento "robotizado".
+const SPEED_PX_S = 60;
 
 export const TickerBar = memo(function TickerBar({ tickers, weather }: TickerBarProps) {
   const text = useMemo(() => {
@@ -64,10 +66,14 @@ export const TickerBar = memo(function TickerBar({ tickers, weather }: TickerBar
         setDuration(width / SPEED_PX_S);
       }
     };
-    // Aguardar render e medir
+    // Aguardar render e medir; medir de novo quando as fontes terminarem de carregar
+    // (a largura muda com a fonte e a animação ficaria com o ponto de loop errado)
     const raf = requestAnimationFrame(measure);
+    let cancelled = false;
+    document.fonts?.ready.then(() => { if (!cancelled) measure(); });
     window.addEventListener("resize", measure);
     return () => {
+      cancelled = true;
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", measure);
     };

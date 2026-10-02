@@ -16,6 +16,8 @@ class ConnectionManager:
     def __init__(self):
         # screen_id -> set of WebSocket connections
         self._connections: Dict[str, Set[WebSocket]] = {}
+        # device_id -> WebSocket do agente (Raspberry Pi)
+        self._devices: Dict[str, WebSocket] = {}
         self._redis: Optional[aioredis.Redis] = None
         self._subscriber_task: Optional[asyncio.Task] = None
 
@@ -49,6 +51,14 @@ class ConnectionManager:
                         continue
                     try:
                         message = json.loads(raw_message["data"])
+                        # Mensagens para agentes de dispositivo (Raspberry Pi)
+                        if message.get("target") == "device":
+                            await self._send_to_device_local(message["device_id"], message["payload"])
+                            continue
+                        if message.get("target") == "devices":
+                            for device_id in list(self._devices):
+                                await self._send_to_device_local(device_id, message["payload"])
+                            continue
                         # Broadcast localmente para as conexões deste worker
                         screen_id = message.pop("screen_id", None)
                         if screen_id:
@@ -82,6 +92,62 @@ class ConnectionManager:
 
     def is_online(self, screen_id: str) -> bool:
         return screen_id in self._connections and len(self._connections[screen_id]) > 0
+
+    # ── Dispositivos (agentes nos Raspberry Pi) ─────────────────────────────
+
+    async def connect_device(self, websocket: WebSocket, device_id: str):
+        await websocket.accept()
+        old = self._devices.get(device_id)
+        self._devices[device_id] = websocket
+        if old is not None:
+            try:
+                await old.close(code=4000)
+            except Exception:
+                pass
+        logger.info("Dispositivo conectado via WS", device_id=device_id)
+
+    def disconnect_device(self, websocket: WebSocket, device_id: str) -> bool:
+        """Remove a conexão. Retorna False se outra conexão já a substituiu."""
+        if self._devices.get(device_id) is websocket:
+            del self._devices[device_id]
+            logger.info("Dispositivo desconectado via WS", device_id=device_id)
+            return True
+        return False
+
+    async def _send_to_device_local(self, device_id: str, message: dict):
+        ws = self._devices.get(device_id)
+        if ws is None:
+            return
+        try:
+            await ws.send_json(message)
+        except Exception:
+            self._devices.pop(device_id, None)
+
+    async def send_to_device(self, device_id: str, message: dict):
+        """Envia mensagem ao agente, esteja ele conectado em qualquer worker."""
+        if self._redis:
+            try:
+                await self._redis.publish(
+                    PUBSUB_CHANNEL,
+                    json.dumps({"target": "device", "device_id": device_id, "payload": message}),
+                )
+                return
+            except Exception as e:
+                logger.error("Erro ao publicar comando de dispositivo", error=str(e))
+        await self._send_to_device_local(device_id, message)
+
+    async def broadcast_devices(self, message: dict):
+        """Envia mensagem a todos os agentes conectados (em qualquer worker)."""
+        if self._redis:
+            try:
+                await self._redis.publish(
+                    PUBSUB_CHANNEL, json.dumps({"target": "devices", "payload": message})
+                )
+                return
+            except Exception as e:
+                logger.error("Erro ao publicar broadcast de dispositivos", error=str(e))
+        for device_id in list(self._devices):
+            await self._send_to_device_local(device_id, message)
 
     async def send_to_screen(self, screen_id: str, message: dict):
         """Envia mensagem para uma tela específica."""
@@ -126,6 +192,8 @@ class ConnectionManager:
         else:
             await self.broadcast(message)
         await self.publish_to_redis({"event": "CONTENT_UPDATE", "screen_id": screen_id})
+        # Agentes dos Raspberry Pi sincronizam o cache local de mídia
+        await self.broadcast_devices({"event": "SYNC_MEDIA"})
 
     async def send_emergency_message(self, message_text: str):
         """Envia mensagem de emergencia para todas as telas."""

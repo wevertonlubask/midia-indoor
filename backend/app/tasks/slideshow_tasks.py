@@ -14,7 +14,8 @@ logger = structlog.get_logger()
 
 
 def _download(url: str) -> bytes:
-    response = httpx.get(url, timeout=60.0)
+    from app.services.storage import to_internal_url
+    response = httpx.get(to_internal_url(url), timeout=60.0)
     response.raise_for_status()
     return response.content
 
@@ -75,11 +76,37 @@ def create_slideshow_video(
             for p in image_paths:
                 inputs += ["-loop", "1", "-t", str(duration_per_image), "-i", p]
 
+            # Filtro "Instagram Stories" com sombra: fundo blur escurecido/dessaturado + drop shadow + imagem
+            # 1. Fundo: scale para cobrir, crop, blur, escurecer e dessaturar
+            # 2. Sombra: cópia escura+blur da imagem principal, offset levemente
+            # 3. Imagem principal: scale mantendo proporção, centralizada por cima da sombra
+            def _bg_blur_filter(input_label: str, output_label: str) -> str:
+                return (
+                    f"[{input_label}]split=3[bg_{output_label}][sh_{output_label}][fg_{output_label}];"
+                    # Fundo blur escurecido e dessaturado
+                    f"[bg_{output_label}]scale=1920:1080:force_original_aspect_ratio=increase,"
+                    f"crop=1920:1080,gblur=sigma=40,"
+                    f"eq=brightness=-0.35:saturation=0.55[bgblur_{output_label}];"
+                    # Sombra: imagem escalada, escurecida 100%, com blur amplo + alpha
+                    f"[sh_{output_label}]scale=1920:1080:force_original_aspect_ratio=decrease,"
+                    f"pad=iw+60:ih+60:30:30:color=black@0,"
+                    f"format=rgba,colorchannelmixer=rr=0:gg=0:bb=0:aa=0.7,"
+                    f"gblur=sigma=25[shadow_{output_label}];"
+                    # Imagem principal
+                    f"[fg_{output_label}]scale=1920:1080:force_original_aspect_ratio=decrease[fgscale_{output_label}];"
+                    # Compor: fundo + sombra + imagem
+                    f"[bgblur_{output_label}][shadow_{output_label}]overlay=(W-w)/2:(H-h)/2[bgshad_{output_label}];"
+                    f"[bgshad_{output_label}][fgscale_{output_label}]overlay=(W-w)/2:(H-h)/2,"
+                    f"setsar=1,format=yuv420p[{output_label}];"
+                )
+
             if n == 1:
-                # Apenas uma imagem - gerar vídeo simples
+                # Apenas uma imagem - gerar vídeo com fundo blur
+                filter_complex = _bg_blur_filter("0:v", "vout").rstrip(";")
                 ffmpeg_cmd = [
                     "ffmpeg", *inputs,
-                    "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,format=yuv420p",
+                    "-filter_complex", filter_complex,
+                    "-map", "[vout]",
                     "-c:v", "libx264", "-profile:v", "main", "-level", "4.0", "-preset", "fast", "-crf", "23",
                     "-movflags", "+faststart",
                     "-y", output_path,
@@ -87,13 +114,9 @@ def create_slideshow_video(
             else:
                 # Construir filtro complexo com xfade
                 filter_parts = []
-                # Primeiro: escalar todas as imagens para 1920x1080
+                # Primeiro: aplicar fundo blur em todas as imagens
                 for i in range(n):
-                    filter_parts.append(
-                        f"[{i}:v]scale=1920:1080:force_original_aspect_ratio=decrease,"
-                        f"pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,"
-                        f"setsar=1,format=yuv420p[v{i}];"
-                    )
+                    filter_parts.append(_bg_blur_filter(f"{i}:v", f"v{i}"))
 
                 # Encadear xfade entre cada par
                 td = min(transition_duration, duration_per_image - 0.1)

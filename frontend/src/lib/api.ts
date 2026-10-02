@@ -102,6 +102,72 @@ export interface Screen {
   is_online: boolean;
 }
 
+export interface DeviceSchedule {
+  enabled: boolean;
+  days: number[]; // 1 = segunda ... 7 = domingo
+  on_time: string;
+  off_time: string;
+}
+
+export interface DeviceSettings {
+  schedule: DeviceSchedule;
+  daily_restart: string | null;
+  tv_control: "auto" | "cec" | "hdmi";
+}
+
+export interface DeviceStatus {
+  temp_c?: number;
+  throttled?: number;
+  uptime_s?: number;
+  load?: number;
+  mem_used_pct?: number;
+  disk_used_pct?: number;
+  wifi_iface?: string;
+  wifi_signal_dbm?: number;
+  tv_state?: "on" | "off" | "unknown";
+  tv_method?: "cec" | "hdmi" | null;
+  browser_running?: boolean;
+  display_url?: string;
+  local_time?: string;
+  clock_offset_s?: number | null;
+  cache_files?: number;
+  cache_mb?: number;
+  cache_pending?: number;
+  cache_ready?: string; // "baixadas/total" da playlist atual
+  disk_free_gb?: number;
+}
+
+export type DeviceCommandName =
+  | "restart_browser"
+  | "reboot"
+  | "tv_on"
+  | "tv_off"
+  | "screenshot"
+  | "update_agent";
+
+export interface Device {
+  id: string;
+  name: string;
+  hostname: string | null;
+  mac: string;
+  ip: string | null;
+  screen_id: string | null;
+  agent_version: string | null;
+  last_seen_at: string | null;
+  status: DeviceStatus | null;
+  settings: DeviceSettings;
+  last_command: {
+    id: string;
+    command: DeviceCommandName;
+    status: "pending" | "ok" | "error";
+    message: string | null;
+    sent_at: string;
+    finished_at: string | null;
+  } | null;
+  created_at: string;
+  is_online: boolean;
+}
+
 export interface Playlist {
   id: string;
   name: string;
@@ -221,6 +287,17 @@ export const screensApi = {
   delete: (id: string) => api.delete(`/screens/${id}`),
   reload: (id: string) => api.post(`/screens/${id}/reload`),
   reloadAll: () => api.post("/screens/reload-all"),
+};
+
+export const devicesApi = {
+  list: () => api.get<Device[]>("/devices/"),
+  update: (id: string, data: { name?: string; screen_id?: string | null; settings?: DeviceSettings }) =>
+    api.patch<Device>(`/devices/${id}`, data),
+  delete: (id: string) => api.delete(`/devices/${id}`),
+  command: (id: string, command: DeviceCommandName) =>
+    api.post<{ command_id: string }>(`/devices/${id}/command`, { command }),
+  screenshot: (id: string) =>
+    api.get<Blob>(`/devices/${id}/screenshot`, { responseType: "blob" }),
 };
 
 export const playlistsApi = {

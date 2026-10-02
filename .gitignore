@@ -79,3 +79,7 @@ docker-compose.prod.yml
 # Scripts e nginx de producao (contém IPs internos)
 scripts/
 nginx/
+
+# Ambiente Docker local
+.env.docker
+.env.docker.*

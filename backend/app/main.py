@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.api.v1 import auth, banners, videos, playlists, tickers, screens, weather, websocket, display, users, logs, rss, emergency, analytics, site_settings
+from app.api.v1 import auth, banners, videos, playlists, tickers, screens, weather, websocket, display, users, logs, rss, emergency, analytics, site_settings, devices
 from app.services.websocket_manager import ws_manager
 
 logger = structlog.get_logger()
@@ -75,6 +75,8 @@ app.include_router(rss.router, prefix=PREFIX)
 app.include_router(emergency.router, prefix=PREFIX)
 app.include_router(analytics.router, prefix=PREFIX)
 app.include_router(site_settings.router, prefix=PREFIX)
+app.include_router(devices.router, prefix=PREFIX)
+app.include_router(devices.agent_router, prefix=PREFIX)
 app.include_router(websocket.router)  # WebSocket sem prefixo /api/v1
 
 

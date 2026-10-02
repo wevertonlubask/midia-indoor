@@ -114,26 +114,6 @@ export const BannerCarousel = memo(function BannerCarousel({ banners, onBannerCh
           as="image"
         />
       )}
-
-      {/* Indicadores */}
-      {banners.length > 1 && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex z-10" style={{ gap: "0.6vmin" }}>
-          {banners.map((_, i) => (
-            <div
-              key={i}
-              className="rounded-full"
-              style={{
-                width: i === currentIndex ? "2.5vmin" : "0.7vmin",
-                height: "0.7vmin",
-                minWidth: i === currentIndex ? "16px" : "5px",
-                minHeight: "5px",
-                background: i === currentIndex ? "white" : "rgba(255,255,255,0.4)",
-                transition: "width 0.3s ease",
-              }}
-            />
-          ))}
-        </div>
-      )}
     </div>
   );
 });

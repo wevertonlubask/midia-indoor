@@ -9,7 +9,7 @@ import { BannerCarousel } from "@/components/display/BannerCarousel";
 import { VideoPlayer } from "@/components/display/VideoPlayer";
 import { TickerBar } from "@/components/display/TickerBar";
 import { WeekForecast } from "@/components/display/WeekForecast";
-import { ClockWidget } from "@/components/display/ClockWidget";
+import { ClockWidget, everyMinute } from "@/components/display/ClockWidget";
 import { EmergencyOverlay } from "@/components/display/EmergencyOverlay";
 import { ConnectionIndicator } from "@/components/display/ConnectionIndicator";
 import type { WeatherData, WeatherForecast } from "@/lib/api";
@@ -41,8 +41,39 @@ function precacheMedia(urls: string[]) {
 
 type BannerItem = { id: string; title: string; file_url: string; duration_seconds: number };
 
+// Sem timeout, uma requisição presa num Wi-Fi ruim deixa o telão em "Carregando" para sempre;
+// com timeout o React Query tenta de novo numa conexão nova
+const REQUEST_TIMEOUT_MS = 15_000;
+
+// ── Cache local de mídia (agente do Raspberry Pi) ───────────────────────────
+// O agente abre o telão com ?cache=http://127.0.0.1:8090 e serve as mídias do
+// cartão SD; arquivos ainda não baixados são redirecionados para o servidor.
+async function detectMediaCache(): Promise<string | null> {
+  const base = new URLSearchParams(window.location.search).get("cache");
+  if (!base) return null;
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 2_000);
+    const res = await fetch(`${base}/health`, { signal: ctrl.signal, cache: "no-store" });
+    clearTimeout(timer);
+    return res.ok ? base : null;
+  } catch {
+    console.warn("[Display] Cache local indisponível, usando o servidor");
+    return null;
+  }
+}
+
+function mediaUrl(cacheBase: string | null, url: string): string;
+function mediaUrl(cacheBase: string | null, url: string | null | undefined): string | null | undefined;
+function mediaUrl(cacheBase: string | null, url: string | null | undefined) {
+  return cacheBase && url ? `${cacheBase}/media?u=${encodeURIComponent(url)}` : url;
+}
+
 async function fetchDisplayData(screenId: string) {
-  const { data } = await axios.get(`${API_URL}/api/v1/display/${screenId}/data`);
+  const baseUrl = typeof window !== "undefined" ? "" : API_URL;
+  const { data } = await axios.get(`${baseUrl}/api/v1/display/${screenId}/data`, {
+    timeout: REQUEST_TIMEOUT_MS,
+  });
   return data as {
     screen_id: string;
     screen_name: string;
@@ -58,12 +89,14 @@ async function fetchDisplayData(screenId: string) {
 }
 
 async function fetchWeather(): Promise<WeatherData | null> {
-  try { const { data } = await axios.get(`${API_URL}/api/v1/weather/current`); return data; }
+  const baseUrl = typeof window !== "undefined" ? "" : API_URL;
+  try { const { data } = await axios.get(`${baseUrl}/api/v1/weather/current`, { timeout: REQUEST_TIMEOUT_MS }); return data; }
   catch { return null; }
 }
 
 async function fetchForecast(): Promise<WeatherForecast | null> {
-  try { const { data } = await axios.get(`${API_URL}/api/v1/weather/forecast`); return data; }
+  const baseUrl = typeof window !== "undefined" ? "" : API_URL;
+  try { const { data } = await axios.get(`${baseUrl}/api/v1/weather/forecast`, { timeout: REQUEST_TIMEOUT_MS }); return data; }
   catch { return null; }
 }
 
@@ -79,11 +112,17 @@ export default function DisplayPage() {
   const [endCount, setEndCount] = useState(0);
   const [emergencyMessage, setEmergencyMessage] = useState<string | null>(null);
   const precachedRef = useRef<string>("");
+  // undefined = verificando; null = sem cache local; string = base do cache
+  const [cacheBase, setCacheBase] = useState<string | null | undefined>(undefined);
 
-  // Registrar Service Worker uma vez
   useEffect(() => {
-    registerServiceWorker();
+    detectMediaCache().then(setCacheBase);
   }, []);
+
+  // Service Worker desabilitado temporariamente
+  // useEffect(() => {
+  //   registerServiceWorker();
+  // }, []);
 
   const { data, refetch, isError } = useQuery({
     queryKey: ["display-data", screenId],
@@ -159,14 +198,21 @@ export default function DisplayPage() {
   );
 
   // PRESERVADO: logica de banner groups/slots
+  const cache = cacheBase ?? null;
   const bannerGroups: BannerItem[][] = useMemo(
-    () => (data?.banner_groups?.length ? data.banner_groups : [data?.banners ?? []]),
-    [data?.banner_groups, data?.banners]
+    () =>
+      (data?.banner_groups?.length ? data.banner_groups : [data?.banners ?? []]).map((group) =>
+        group.map((b) => ({ ...b, file_url: mediaUrl(cache, b.file_url) }))
+      ),
+    [data?.banner_groups, data?.banners, cache]
   );
-  const videos  = useMemo(() => data?.videos ?? [], [data?.videos]);
+  const videos = useMemo(
+    () => (data?.videos ?? []).map((v) => ({ ...v, video_url: mediaUrl(cache, v.video_url) })),
+    [data?.videos, cache]
+  );
   const tickers = useMemo(() => data?.tickers ?? [], [data?.tickers]);
   const accentColor = data?.accent_color || RED;
-  const logoUrl = data?.company_logo_url;
+  const logoUrl = mediaUrl(cache, data?.company_logo_url);
 
   const safeIndex = videos.length > 0 ? currentVideoIndex % videos.length : 0;
   const currentVideo = videos[safeIndex];
@@ -189,8 +235,9 @@ export default function DisplayPage() {
     [reportPlaying, currentVideo?.id]
   );
 
-  // Loading screen
-  if (!data) {
+  // Loading screen (também aguarda a verificação do cache local, para não
+  // trocar o src do vídeo no meio da reprodução)
+  if (!data || cacheBase === undefined) {
     return (
       <div
         style={{
@@ -278,7 +325,7 @@ export default function DisplayPage() {
           {bannerGroups.map((groupBanners, slotIdx) => (
             <div
               key={slotIdx}
-              className="rounded-2xl overflow-hidden min-h-0"
+              className="rounded-sm overflow-hidden min-h-0"
               style={{ flex: 1 }}
             >
               <BannerCarousel
@@ -292,7 +339,7 @@ export default function DisplayPage() {
         {/* Video column */}
         <div className="flex-1 flex flex-col min-h-0" style={{ gap: "1vmin" }}>
           <div
-            className="flex-1 rounded-2xl overflow-hidden min-h-0"
+            className="flex-1 rounded-sm overflow-hidden min-h-0"
             style={{ background: "#000" }}
           >
             {currentVideo ? (
@@ -342,7 +389,7 @@ const BottomBar = memo(function BottomBar({
 }) {
   return (
     <div
-      className="flex-shrink-0 rounded-xl overflow-hidden flex items-stretch"
+      className="flex-shrink-0 rounded-sm overflow-hidden flex items-stretch"
       style={{
         height: "8vh",
         background: "rgba(15, 23, 42, 0.96)",
@@ -408,8 +455,7 @@ function StandbyScreen({
 
   useEffect(() => {
     setTime(new Date());
-    const t = setInterval(() => setTime(new Date()), 1000);
-    return () => clearInterval(t);
+    return everyMinute(() => setTime(new Date()));
   }, []);
 
   return (

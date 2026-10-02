@@ -109,6 +109,14 @@ select, button, input, textarea {
   background: var(--color-muted-foreground);
 }
 
+/* ===== Display/Telao ===== */
+
+/* Telão e pareamento nunca mostram o ponteiro do mouse, em nenhum elemento */
+.kiosk-root,
+.kiosk-root * {
+  cursor: none !important;
+}
+
 /* ===== Display/Telao keyframes ===== */
 
 @keyframes gc-scroll {

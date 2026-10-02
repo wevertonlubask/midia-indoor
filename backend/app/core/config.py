@@ -7,7 +7,7 @@ import os
 class Settings(BaseSettings):
     # Aplicação
     APP_NAME: str = "SignFlow"
-    VERSION: str = "1.0.0"
+    VERSION: str = "2.1.0"
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "info"
@@ -52,6 +52,13 @@ class Settings(BaseSettings):
     # Uploads
     MAX_IMAGE_SIZE_MB: int = 10
     MAX_VIDEO_SIZE_MB: int = 500
+
+    # Dispositivos (Raspberry Pi)
+    DEVICE_ENROLL_KEY: str = ""                  # se definido, o agente precisa informá-la para se registrar
+    AGENT_DIST_DIR: str = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
+        "raspi-agent",
+    )
 
     # CORS
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3001"

@@ -1,0 +1,14 @@
+[Unit]
+Description=SignFlow Agent (gerenciamento remoto do display)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/signflow-agent/signflow_agent.py
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

@@ -426,6 +426,12 @@ Todos devem estar `active (running)`.
 
 ## Configuracao do Raspberry Pi (Display)
 
+> **v2.1+: instalacao automatica.** Os Raspberry Pi agora sao provisionados e gerenciados pelo
+> painel (menu **Dispositivos**): `curl -fsSL http://10.111.4.51/api/v1/agent/install.sh | sudo bash`.
+> O agente instala o quiosque (cage + Chromium), recebe o link da tela pelo painel, cacheia as midias
+> no cartao SD, agenda liga/desliga da TV (HDMI-CEC) e aceita comandos remotos.
+> Detalhes em [raspi-agent/README.md](raspi-agent/README.md). O procedimento manual abaixo e legado.
+
 O Raspberry Pi 4 Model B e usado como client de exibicao. Ele acessa a URL do display via navegador Chromium em modo tela cheia.
 
 ### 1. Instalar dependencias

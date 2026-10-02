@@ -189,6 +189,15 @@ def upload_thumbnail(file_data: bytes, filename: str) -> str:
     return f"{settings.minio_public_base}/{settings.MINIO_BUCKET}/{object_name}"
 
 
+def to_internal_url(url: str) -> str:
+    """Troca a base pública do MinIO pelo endpoint interno (acessível de dentro dos containers/workers)."""
+    public = settings.minio_public_base
+    if url.startswith(public + "/"):
+        scheme = "https" if settings.MINIO_SECURE else "http"
+        return f"{scheme}://{settings.MINIO_ENDPOINT}{url[len(public):]}"
+    return url
+
+
 def delete_object(url: str) -> None:
     """Remove um objeto do MinIO dado sua URL."""
     try:

@@ -7,7 +7,7 @@ export const metadata: Metadata = {
 
 export default function DisplayLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="overflow-hidden w-screen h-screen">
+    <div className="kiosk-root overflow-hidden w-screen h-screen">
       {children}
     </div>
   );

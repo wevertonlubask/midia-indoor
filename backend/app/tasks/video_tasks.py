@@ -16,7 +16,8 @@ logger = structlog.get_logger()
 
 def _download_from_minio(url: str) -> bytes:
     """Baixa arquivo do MinIO via HTTP."""
-    response = httpx.get(url, timeout=120.0)
+    from app.services.storage import to_internal_url
+    response = httpx.get(to_internal_url(url), timeout=120.0)
     response.raise_for_status()
     return response.content
 
