@@ -22,6 +22,7 @@ import pwd
 import queue
 import shutil
 import socket
+import ssl
 import subprocess
 import sys
 import threading
@@ -30,6 +31,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta
+from email.utils import parsedate_to_datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 try:
@@ -38,7 +40,7 @@ except ImportError:  # websockets < 13
     from websockets import connect as ws_connect
 from websockets.exceptions import ConnectionClosed, InvalidStatus
 
-AGENT_VERSION = "1.2.0"
+AGENT_VERSION = "1.4.0"
 
 CONFIG_FILE = "/etc/signflow-agent/agent.conf"
 STATE_DIR = "/var/lib/signflow-agent"
@@ -49,6 +51,9 @@ BROWSER_LAUNCH_FILE = "/tmp/signflow-browser-launch"
 PROFILE_MARKER = "signflow-kiosk"  # parte do --user-data-dir do Chromium
 
 STATUS_INTERVAL = 30
+
+# Fontes de hora (cabeçalho HTTP Date), na ordem; o servidor SignFlow é o último recurso
+TIME_SOURCES = ["https://www.google.com.br", "https://www.cloudflare.com"]
 SCHEDULER_INTERVAL = 20
 
 # Cache local de mídia
@@ -645,10 +650,12 @@ class Agent:
         handlers = {
             "restart_browser": self.cmd_restart_browser,
             "reboot": self.cmd_reboot,
+            "shutdown": self.cmd_shutdown,
             "tv_on": lambda: self.set_tv(True),
             "tv_off": lambda: self.set_tv(False),
             "screenshot": self.cmd_screenshot,
             "update_agent": self.cmd_update_agent,
+            "sync_time": self.cmd_sync_time,
         }
         handler = handlers.get(command)
         if handler is None:
@@ -666,6 +673,9 @@ class Agent:
         if ok and command == "reboot":
             await asyncio.sleep(2)
             run(["systemctl", "reboot"])
+        if ok and command == "shutdown":
+            await asyncio.sleep(2)
+            run(["systemctl", "poweroff"])
         if ok and command == "update_agent":
             await asyncio.sleep(1)
             os._exit(0)  # systemd reinicia o serviço com o novo código
@@ -736,6 +746,51 @@ class Agent:
 
     def cmd_reboot(self):
         return True, "Reiniciando o Raspberry Pi"
+
+    def cmd_shutdown(self):
+        return True, "Desligando o Raspberry Pi (para religar, desligue e religue a energia)"
+
+    # ── Hora ────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def http_time(url: str) -> float:
+        """Hora (epoch) pelo cabeçalho Date de uma resposta HTTP, compensando a rede.
+        Sem verificar certificado: com o relógio muito errado o TLS falharia
+        justamente quando a hora precisa ser corrigida."""
+        ctx = ssl._create_unverified_context() if url.startswith("https") else None
+        req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "SignFlow-Agent"})
+        t0 = time.time()
+        try:
+            with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
+                date = resp.headers.get("Date")
+        except urllib.error.HTTPError as e:
+            date = e.headers.get("Date")  # até uma resposta de erro (ex.: 405 no HEAD) traz a hora
+        t1 = time.time()
+        if not date:
+            raise ValueError("resposta sem cabeçalho Date")
+        # Date tem resolução de 1 s (truncado): +0,5 s em média, mais metade da ida e volta
+        return parsedate_to_datetime(date).timestamp() + 0.5 + (time.time() - t1) + (t1 - t0) / 2
+
+    def cmd_sync_time(self):
+        errors = []
+        for url in TIME_SOURCES + [f"{self.server}/health"]:
+            try:
+                epoch = self.http_time(url)
+                break
+            except Exception as e:
+                errors.append(f"{urllib.parse.urlparse(url).hostname}: {e}")
+        else:
+            return False, "Nenhuma fonte de hora respondeu (" + "; ".join(errors)[:300] + ")"
+
+        source = urllib.parse.urlparse(url).hostname
+        offset = epoch - time.time()
+        if abs(offset) < 1.5:
+            return True, f"Hora já estava correta (diferença {offset:+.1f}s, fonte {source})"
+        r = run(["date", "-s", f"@{epoch:.3f}"])
+        if r.returncode != 0:
+            return False, "Falha ao ajustar o relógio: " + r.stderr.decode(errors="replace")[:200]
+        log.info("Relógio ajustado em %+.1fs (fonte %s)", offset, source)
+        return True, f"Hora ajustada em {offset:+.0f}s (fonte {source}) — agora {datetime.now():%d/%m %H:%M:%S}"
 
     # ── TV (HDMI-CEC com fallback para desligar a saída HDMI) ───────────────
 

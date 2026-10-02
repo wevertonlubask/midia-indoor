@@ -140,10 +140,12 @@ export interface DeviceStatus {
 export type DeviceCommandName =
   | "restart_browser"
   | "reboot"
+  | "shutdown"
   | "tv_on"
   | "tv_off"
   | "screenshot"
-  | "update_agent";
+  | "update_agent"
+  | "sync_time";
 
 export interface Device {
   id: string;

@@ -8,10 +8,12 @@ import { devicesApi, type Device, type DeviceCommandName } from "@/lib/api";
 export const COMMAND_LABELS: Record<DeviceCommandName, string> = {
   restart_browser: "Reiniciar navegador",
   reboot: "Reiniciar Raspberry",
+  shutdown: "Desligar Raspberry",
   tv_on: "Ligar TV",
   tv_off: "Desligar TV",
   screenshot: "Capturar tela",
   update_agent: "Atualizar agente",
+  sync_time: "Atualizar hora",
 };
 
 export const WEEKDAYS = [

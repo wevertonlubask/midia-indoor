@@ -46,6 +46,12 @@ para sincronizar mudanças (a cada 2 min e imediatamente quando o conteúdo muda
   é transmitido do servidor
 - Para desativar: `"media_cache": false` em `agent.conf`
 
+## Comandos remotos (painel → Dispositivos)
+
+Ligar/desligar TV (HDMI-CEC), reiniciar navegador, capturar tela, reiniciar o Pi, **desligar o Pi**
+(só religa cortando e religando a energia), **atualizar hora** (pela internet — Google/Cloudflare —
+ou, sem internet, pelo servidor SignFlow) e atualizar o agente.
+
 ## Arquivos no Pi
 
 - `/etc/signflow-agent/agent.conf` — servidor e usuário do quiosque

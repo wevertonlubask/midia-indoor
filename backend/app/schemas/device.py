@@ -8,10 +8,12 @@ _TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 DeviceCommandName = Literal[
     "restart_browser",
     "reboot",
+    "shutdown",
     "tv_on",
     "tv_off",
     "screenshot",
     "update_agent",
+    "sync_time",
 ]
 
 

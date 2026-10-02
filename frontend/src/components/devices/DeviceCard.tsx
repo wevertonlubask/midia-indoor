@@ -5,7 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   Cpu, Thermometer, Wifi, HardDrive, Clock, Tv, Globe, Send, Loader2, Camera, RotateCw,
-  Power, PowerOff, RefreshCw, Download, Trash2, CalendarClock, ChevronDown,
+  Power, PowerOff, RefreshCw, Download, Trash2, CalendarClock, TimerReset, Unplug, ChevronDown,
   ChevronUp, Pencil, Check, X, AlertTriangle, CheckCircle2, XCircle,
 } from "lucide-react";
 import {
@@ -231,6 +231,24 @@ export function DeviceCard({ device, screens }: { device: Device; screens: Scree
           icon={RefreshCw}
           label="Reiniciar Pi"
           onClick={() => run("reboot", `Reiniciar o Raspberry Pi "${device.name}"? A TV ficará ~1 min sem conteúdo.`)}
+          disabled={!device.is_online || busy}
+        />
+        <ActionButton
+          icon={Unplug}
+          label="Desligar Pi"
+          onClick={() =>
+            run(
+              "shutdown",
+              `Desligar o Raspberry Pi "${device.name}"?\n\nA TV ficará sem conteúdo e o Pi NÃO liga remotamente: ` +
+                "para religar será preciso desligar e religar a energia dele."
+            )
+          }
+          disabled={!device.is_online || busy}
+        />
+        <ActionButton
+          icon={TimerReset}
+          label="Atualizar hora"
+          onClick={() => run("sync_time")}
           disabled={!device.is_online || busy}
         />
         <ActionButton
