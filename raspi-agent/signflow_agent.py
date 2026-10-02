@@ -40,7 +40,7 @@ except ImportError:  # websockets < 13
     from websockets import connect as ws_connect
 from websockets.exceptions import ConnectionClosed, InvalidStatus
 
-AGENT_VERSION = "1.5.0"
+AGENT_VERSION = "1.5.1"
 
 CONFIG_FILE = "/etc/signflow-agent/agent.conf"
 STATE_DIR = "/var/lib/signflow-agent"
@@ -838,10 +838,17 @@ class Agent:
         outputs = self.hdmi_outputs()
         if not outputs:
             return False, "Saída de vídeo não encontrada"
-        ok = all(
-            run(["wlr-randr", "--output", o, "--on" if on else "--off"], user=self.kiosk_user).returncode == 0
-            for o in outputs
-        )
+        ok = True
+        for o in outputs:
+            if on:
+                # Ao religar, o compositor volta ao modo preferido da TV (ex.: 4K 30 Hz,
+                # pesado para o Pi 4): força 1080p 60 Hz como o kiosk-browser.sh faz no início
+                ok &= any(
+                    run(["wlr-randr", "--output", o, "--on", "--mode", mode], user=self.kiosk_user).returncode == 0
+                    for mode in ("1920x1080@60Hz", "1920x1080")
+                ) or run(["wlr-randr", "--output", o, "--on"], user=self.kiosk_user).returncode == 0
+            else:
+                ok &= run(["wlr-randr", "--output", o, "--off"], user=self.kiosk_user).returncode == 0
         return ok, "Sinal HDMI " + ("ligado" if on else "desligado") if ok else "Falha ao alterar saída HDMI"
 
     def cec_power_status(self):
