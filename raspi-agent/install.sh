@@ -211,6 +211,15 @@ if [ -n "$WIFI_BAND" ]; then
   fi
 fi
 
+# ── Hora: sem NTP na rede, sincroniza pelo cabeçalho HTTP Date (boot + a cada 15 min)
+log "Instalando sincronização de hora (http-timesync)..."
+mkdir -p /tmp/signflow-timesync
+for f in install-timesync.sh http-timesync http-timesync.service http-timesync.timer; do
+  curl -fsSL "$SERVER/api/v1/agent/$f" -o "/tmp/signflow-timesync/$f" || die "falha ao baixar $f"
+done
+bash /tmp/signflow-timesync/install-timesync.sh | sed 's/^/    /'
+rm -rf /tmp/signflow-timesync
+
 # ── Serviços: quiosque no lugar do desktop ──────────────────────────────────
 log "Configurando serviços..."
 sed "s/__KIOSK_USER__/$KIOSK_USER/" "$AGENT_DIR/signflow-kiosk.service" > /etc/systemd/system/signflow-kiosk.service

@@ -125,7 +125,7 @@ export interface DeviceStatus {
   wifi_iface?: string;
   wifi_signal_dbm?: number;
   tv_state?: "on" | "off" | "unknown";
-  tv_method?: "cec" | "hdmi" | null;
+  tv_method?: "auto" | "cec" | "hdmi" | null;
   browser_running?: boolean;
   display_url?: string;
   local_time?: string;

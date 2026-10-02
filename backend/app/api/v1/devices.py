@@ -50,6 +50,10 @@ AGENT_FILES = {
     "kiosk-browser.sh": "text/x-shellscript",
     "signflow-agent.service": "text/plain",
     "signflow-kiosk.service": "text/plain",
+    "install-timesync.sh": "text/x-shellscript",
+    "http-timesync": "text/x-python",
+    "http-timesync.service": "text/plain",
+    "http-timesync.timer": "text/plain",
 }
 
 
@@ -309,7 +313,7 @@ async def download_agent_file(filename: str, request: Request):
     # Modo texto converte CRLF em LF (CRLF quebraria o bash no Pi)
     with open(path, encoding="utf-8") as f:
         content = f.read()
-    if filename == "install.sh":
+    if filename in ("install.sh", "install-timesync.sh"):
         proto = request.headers.get("x-forwarded-proto", request.url.scheme)
         host = request.headers.get("host", request.url.netloc)
         content = content.replace("__SIGNFLOW_SERVER__", f"{proto}://{host}")

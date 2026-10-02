@@ -52,6 +52,23 @@ Ligar/desligar TV (HDMI-CEC), reiniciar navegador, capturar tela, reiniciar o Pi
 (só religa cortando e religando a energia), **atualizar hora** (pela internet — Google/Cloudflare —
 ou, sem internet, pelo servidor SignFlow) e atualizar o agente.
 
+## Hora (sem NTP na rede)
+
+A rede bloqueia NTP; a hora é sincronizada pelo cabeçalho HTTP `Date` (Google, Cloudflare e Microsoft,
+mediana entre as fontes, precisão de centésimos de segundo) pelo `http-timesync`, no boot e a cada
+15 min (`systemctl list-timers http-timesync.timer`). O `install.sh` já o instala no Pi; o botão
+**Atualizar hora** do painel executa o mesmo script.
+
+Para servidores (Proxmox, VMs Debian) — mesma rede, sem SignFlow:
+
+```bash
+curl -fsSL http://10.111.4.51/api/v1/agent/install-timesync.sh | bash
+http-timesync --check      # mostra a diferença sem ajustar
+journalctl -u http-timesync -o cat | tail   # histórico de ajustes
+```
+
+Instalado em: SN914EHYPER1 (10.111.4.9), SN914EHYPER2 (10.111.4.16), VM Mídia (10.111.4.51) e Raspberry (10.111.4.50).
+
 ## Arquivos no Pi
 
 - `/etc/signflow-agent/agent.conf` — servidor e usuário do quiosque

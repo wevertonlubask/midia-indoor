@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+"""
+http-timesync — sincroniza o relógio do sistema sem NTP, pelo cabeçalho HTTP Date.
+
+Usado nos servidores e Raspberry Pi do SENAI CFP 914, onde não há servidor NTP e
+a porta 123 é bloqueada. O cabeçalho Date tem resolução de 1 s; para obter
+precisão de dezenas de milissegundos, o script faz requisições HEAD seguidas na
+mesma conexão até o segundo do servidor "virar" e usa esse instante.
+
+Fontes: Google, Cloudflare e Microsoft (mediana). Correções acima de 1 hora só
+são aplicadas se duas fontes concordarem. Após ajustar, grava o relógio de
+hardware (RTC) quando existir.
+
+Uso:  http-timesync            ajusta se a diferença for >= 0,5 s
+      http-timesync --check    só mostra a diferença, sem ajustar
+Saída: uma linha de resumo (lida também pelo agente SignFlow). Código 0 = ok.
+"""
+import http.client
+import os
+import ssl
+import statistics
+import subprocess
+import sys
+import time
+from email.utils import parsedate_to_datetime
+
+SOURCES = ["www.google.com.br", "www.cloudflare.com", "www.microsoft.com"]
+THRESHOLD_S = 0.5            # só ajusta acima disso
+BIG_JUMP_S = 3600            # acima disso, exige concordância entre fontes
+AGREEMENT_S = 5              # tolerância entre fontes
+MAX_PROBES = 40              # requisições por fonte procurando a virada do segundo
+
+
+def measure(host: str) -> float:
+    """Retorna a diferença (fonte - relógio local) em segundos."""
+    # Sem verificar certificado: com o relógio muito errado o TLS falharia
+    # justamente quando a hora precisa ser corrigida. Só lemos o cabeçalho Date.
+    conn = http.client.HTTPSConnection(host, timeout=5, context=ssl._create_unverified_context())
+    try:
+        prev_date, prev_mid = None, None
+        for _ in range(MAX_PROBES):
+            t0 = time.time()
+            conn.request("HEAD", "/", headers={"User-Agent": "http-timesync", "Connection": "keep-alive"})
+            resp = conn.getresponse()
+            resp.read()
+            t1 = time.time()
+            date = resp.getheader("Date")
+            if not date:
+                raise ValueError("sem cabeçalho Date")
+            server_s = parsedate_to_datetime(date).timestamp()
+            mid = (t0 + t1) / 2
+            if prev_date is not None and server_s > prev_date:
+                # O segundo virou entre as duas requisições: o instante local da
+                # virada fica entre os dois pontos médios
+                return server_s - (prev_mid + mid) / 2
+            prev_date, prev_mid = server_s, mid
+            if resp.getheader("Connection", "").lower() == "close":
+                conn.close()
+        # Sem virada detectada: estimativa pelo meio do segundo (±0,5 s)
+        return prev_date + 0.5 - prev_mid
+    finally:
+        conn.close()
+
+
+def main() -> int:
+    check_only = "--check" in sys.argv
+    offsets, errors = {}, []
+    for host in SOURCES:
+        try:
+            offsets[host] = measure(host)
+        except Exception as e:
+            errors.append(f"{host}: {e}")
+    if not offsets:
+        print("ERRO: nenhuma fonte de hora respondeu (" + "; ".join(errors) + ")")
+        return 1
+
+    values = sorted(offsets.values())
+    offset = statistics.median(values)
+    detail = ", ".join(f"{h.replace('www.', '')} {o:+.2f}s" for h, o in offsets.items())
+
+    if abs(offset) >= BIG_JUMP_S:
+        agreeing = [v for v in values if abs(v - offset) <= AGREEMENT_S]
+        if len(agreeing) < 2:
+            print(f"ERRO: ajuste de {offset:+.0f}s sem duas fontes concordando ({detail}) — não aplicado")
+            return 1
+
+    if abs(offset) < THRESHOLD_S or check_only:
+        state = "diferença" if check_only else "hora correta, diferença"
+        print(f"OK: {state} {offset:+.2f}s ({detail})")
+        return 0
+
+    time.clock_settime(time.CLOCK_REALTIME, time.time() + offset)
+    rtc = ""
+    if os.path.exists("/dev/rtc0") and subprocess.run(
+        ["hwclock", "--systohc", "--utc"], capture_output=True
+    ).returncode == 0:
+        rtc = ", RTC gravado"
+    print(f"AJUSTADO: {offset:+.2f}s ({detail}{rtc}) — agora {time.strftime('%d/%m/%Y %H:%M:%S')}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

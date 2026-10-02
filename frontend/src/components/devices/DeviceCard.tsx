@@ -175,7 +175,7 @@ export function DeviceCard({ device, screens }: { device: Device; screens: Scree
         </Metric>
         <Metric icon={Tv} label="TV">
           {status.tv_state === "on" ? "Ligada" : status.tv_state === "off" ? "Desligada" : "—"}
-          {status.tv_method ? ` (${status.tv_method.toUpperCase()})` : ""}
+          {status.tv_method ? ` (${status.tv_method === "auto" ? "CEC + HDMI" : status.tv_method.toUpperCase()})` : ""}
         </Metric>
         <Metric icon={Clock} label="Ligado há">{formatUptime(status.uptime_s)}</Metric>
         <Metric icon={Cpu} label="CPU / RAM">
@@ -366,7 +366,7 @@ export function DeviceCard({ device, screens }: { device: Device; screens: Scree
                   value={settings.tv_control}
                   onChange={(v) => setSettings({ ...settings, tv_control: v as DeviceSettings["tv_control"] })}
                   options={[
-                    { value: "auto", label: "Automático" },
+                    { value: "auto", label: "Automático (CEC + sinal HDMI)" },
                     { value: "cec", label: "HDMI-CEC" },
                     { value: "hdmi", label: "Cortar sinal HDMI" },
                   ]}

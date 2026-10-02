@@ -40,7 +40,7 @@ except ImportError:  # websockets < 13
     from websockets import connect as ws_connect
 from websockets.exceptions import ConnectionClosed, InvalidStatus
 
-AGENT_VERSION = "1.4.0"
+AGENT_VERSION = "1.5.0"
 
 CONFIG_FILE = "/etc/signflow-agent/agent.conf"
 STATE_DIR = "/var/lib/signflow-agent"
@@ -52,6 +52,7 @@ PROFILE_MARKER = "signflow-kiosk"  # parte do --user-data-dir do Chromium
 
 STATUS_INTERVAL = 30
 
+TIMESYNC_BIN = "/usr/local/sbin/http-timesync"
 # Fontes de hora (cabeçalho HTTP Date), na ordem; o servidor SignFlow é o último recurso
 TIME_SOURCES = ["https://www.google.com.br", "https://www.cloudflare.com"]
 SCHEDULER_INTERVAL = 20
@@ -772,6 +773,12 @@ class Agent:
         return parsedate_to_datetime(date).timestamp() + 0.5 + (time.time() - t1) + (t1 - t0) / 2
 
     def cmd_sync_time(self):
+        # Preferência: http-timesync (precisão de centésimos; instalado pelo install.sh)
+        if os.path.exists(TIMESYNC_BIN):
+            r = run([TIMESYNC_BIN], timeout=90)
+            out = r.stdout.decode(errors="replace").strip().splitlines()
+            message = out[-1] if out else r.stderr.decode(errors="replace").strip()[:300]
+            return r.returncode == 0, message
         errors = []
         for url in TIME_SOURCES + [f"{self.server}/health"]:
             try:
@@ -837,26 +844,54 @@ class Agent:
         )
         return ok, "Sinal HDMI " + ("ligado" if on else "desligado") if ok else "Falha ao alterar saída HDMI"
 
+    def cec_power_status(self):
+        """Estado de energia informado pela TV via CEC (on/standby/...) ou None."""
+        found = self.find_cec_device()
+        if not found:
+            return None
+        out = run(["cec-ctl", "-d", found[0], "--to", "0", "--give-device-power-status"]).stdout.decode(errors="replace")
+        for line in out.splitlines():
+            if "pwr-state:" in line:
+                return line.split(":", 1)[1].split("(")[0].strip()
+        return None
+
     def set_tv(self, on: bool):
+        """
+        auto: liga/desliga pelo HDMI-CEC E liga/corta o sinal HDMI. Só o CEC não
+              basta em algumas TVs (ex.: Philips), que entram em standby e religam
+              sozinhas ao detectar o sinal do Pi; sem sinal, a TV permanece desligada.
+        cec:  apenas HDMI-CEC.   hdmi: apenas o sinal HDMI.
+        """
         mode = self.settings.get("tv_control", "auto")
-        ok, message = False, ""
-        if on and self.tv_method == "hdmi":
-            # Se foi desligada cortando o sinal, religar o sinal primeiro
-            ok, message = self.hdmi(True)
+        parts, ok_any = [], False
+
+        if on and mode in ("auto", "hdmi"):
+            hdmi_ok, hdmi_msg = self.hdmi(True)
+            ok_any |= hdmi_ok
+            parts.append(hdmi_msg)
         if mode in ("auto", "cec"):
-            cec_ok, cec_message = self.cec(on)
-            if cec_ok:
-                ok, message, self.tv_method = True, cec_message, "cec"
-            elif not ok:
-                message = cec_message
-        if not ok and mode in ("auto", "hdmi"):
-            ok, message = self.hdmi(on)
-            if ok:
-                self.tv_method = "hdmi"
-        if ok:
+            cec_ok, cec_msg = self.cec(on)
+            ok_any |= cec_ok
+            parts.append(cec_msg)
+        if not on and mode in ("auto", "hdmi"):
+            if mode == "auto":
+                time.sleep(2)  # dá tempo da TV processar o standby antes de perder o sinal
+            hdmi_ok, hdmi_msg = self.hdmi(False)
+            ok_any |= hdmi_ok
+            parts.append(hdmi_msg)
+
+        if mode in ("auto", "cec"):
+            time.sleep(1)
+            power = self.cec_power_status()
+            if power:
+                parts.append(f"TV confirmou: {power}")
+
+        if ok_any:
             self.tv_state = "on" if on else "off"
-        log.info("TV %s: %s (%s)", "on" if on else "off", ok, message)
-        return ok, message
+            self.tv_method = mode
+        message = " · ".join(p for p in parts if p)
+        log.info("TV %s: %s (%s)", "on" if on else "off", ok_any, message)
+        return ok_any, message
 
     # ── Captura de tela ─────────────────────────────────────────────────────
 

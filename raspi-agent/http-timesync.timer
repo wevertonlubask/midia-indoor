@@ -1,0 +1,11 @@
+[Unit]
+Description=Sincroniza a hora pelo HTTP no boot e a cada 15 minutos
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=15min
+AccuracySec=10s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
